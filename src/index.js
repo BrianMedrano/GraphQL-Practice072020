@@ -1,7 +1,8 @@
 import { GraphQLServer } from 'graphql-yoga';
+import { v4 as uuidv4 } from 'uuid';
 
 //Demo user data
-const users = [
+let users = [
   {
     id: '1',
     name: 'Brian',
@@ -23,7 +24,7 @@ const users = [
 ];
 
 //Demo posts data
-const posts = [
+let posts = [
   {
     id: '10',
     title: 'Intro post',
@@ -61,7 +62,7 @@ const posts = [
 ];
 
 //Comments dummy data
-const comments = [
+let comments = [
   {
     id: '101',
     text: 'This is the first comment',
@@ -97,6 +98,32 @@ const typeDefs = `
     comments: [Comment!]!
   }
 
+  type Mutation {
+    createUser(data: CreateUserInput!): User!
+    deleteUser(id: ID!): User!
+    createPost(post: CreatePostInput!): Post!
+    createComment(comment: CreateCommentInput!): Comment!
+  }
+
+  input CreateUserInput{
+    name: String!,
+    email: String!,
+    age: Int
+  }
+
+  input CreatePostInput{
+    title: String!,
+    body: String!,
+    published: Boolean!,
+    author: ID!
+  }
+
+  input CreateCommentInput {
+    text: String!,
+    author: ID!,
+    post: ID!
+  }
+  
   type User {
     id: ID!
     name: String!
@@ -148,6 +175,93 @@ const resolvers = {
 
     comments(parent, args, ctx, info) {
       return comments;
+    },
+  },
+
+  Mutation: {
+    createUser(parent, args, ctx, info) {
+      const emailTaken = users.some((user) => user.email === args.data.email);
+
+      if (emailTaken) {
+        throw new Error('Email taken');
+      }
+
+      const user = {
+        id: uuidv4(),
+        ...args.data,
+      };
+
+      users.push(user);
+      return user;
+    },
+
+    //Delete a user from our list of users along with associated posts and comments
+    deleteUser(parent, args, ctx, info) {
+      const userIndex = users.findIndex((user) => user.id === args.id);
+
+      if (userIndex === -1) {
+        throw new Error('User not found');
+      }
+
+      const deletedUser = users.splice(userIndex, 1);
+
+      posts = posts.filter((post) => {
+        const match = post.author === args.id;
+
+        if (match) {
+          comments = comments.filter((comment) => comment.post !== post.id);
+        }
+
+        return !match;
+      });
+
+      comments = comments.filter((comment) => comment.author !== args.id);
+      return deletedUser[0];
+    },
+
+    createPost(parent, args, ctx, info) {
+      const userExists = users.some((user) => user.id === args.post.author);
+
+      if (!userExists) {
+        throw new Error('User not found');
+      }
+
+      const post = {
+        id: uuidv4(),
+        ...args.post,
+      };
+
+      posts.push(post);
+
+      return post;
+    },
+
+    createComment(parent, args, ctx, info) {
+      //Check if user exists
+      const userExists = users.some((user) => user.id === args.comment.author);
+      if (!userExists) {
+        throw new Error('User not found');
+      }
+
+      //Post exists and it is published
+      const validPost = posts.some(
+        (post) => post.id === args.comment.post && post.published
+      );
+
+      if (!validPost) {
+        throw new Error('Post not found');
+      }
+
+      //create commment
+
+      const comment = {
+        id: uuidv4(),
+        ...args.comment,
+      };
+
+      comments.push(comment);
+
+      return comment;
     },
   },
 
